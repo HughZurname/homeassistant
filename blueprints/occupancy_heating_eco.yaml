@@ -1,0 +1,100 @@
+blueprint:
+  name: Occupancy-Activated Heating
+  description: Turn up heating when an area is occupied.
+  domain: automation
+ # source_url: 
+  input:
+    occupancy_entity:
+      name: Occupancy Sensor
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class: occupancy
+    climate_target:
+      name: Climate Device
+      selector:
+        target:
+    eco_temperature:
+      name: Eco Temperature
+      description: Fallback temperature when no occupancy is detected
+      selector:
+        entity:
+          domain: input_number
+    comfort_temperature:
+      name: Comfort Temperature
+      description: Comfort temperature when occupancy is detected
+      selector:
+        entity:
+          domain: input_number
+    time_after:
+      name: Time After
+      description: Point from which the occupancy will control eco heating
+      selector:
+        entity:
+          domain: input_datetime
+    time_before:
+      name: Time Before
+      description: Point from which the occupancy will not trigger eco heating
+      selector:
+        entity:
+          domain: input_datetime
+    window_sensors:
+      name: Window Sensors
+      description: List of window sensor to shut down heating when open
+      default: []
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class: opening
+        
+variables:
+  input_eco: !input eco_temperature 
+  input_comfort: !input comfort_temperature
+  
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input occupancy_entity
+  - platform: state
+    entity_id: !input window_sensors
+
+action:
+  - if:
+      - condition: state
+        entity_id: !input window_sensors
+        state: "on"
+    then:
+      - service: climate.set_temperature
+        data:
+          temperature: 5
+        target: !input climate_target
+    else:
+      - if:
+          - condition: time
+            after: !input time_after
+            before: !input time_before
+        then:
+          - if: 
+              - condition: state
+                entity_id: !input occupancy_entity
+                state: "on"
+            then:
+                - service: climate.set_temperature
+                  data:
+                    temperature: "{{ states[input_comfort].state | int }}"
+                    hvac_mode: heat
+                  target: !input climate_target
+            else:
+                - service: climate.set_temperature
+                  data:
+                    hvac_mode: heat
+                    temperature: "{{ states[input_eco].state | int }}"
+                  target: !input climate_target
+        else:
+          - service: climate.set_temperature
+            data:
+              hvac_mode: heat
+              temperature: "{{ states[input_eco].state | int }}"
+            target: !input climate_target
